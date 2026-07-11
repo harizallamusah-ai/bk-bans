@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Track Your Order | Burger King Ghana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --red:#D62300;--flame:#FF8732;--gold:#FFAA00;
+  --peach:#EFE7DA;--dark:#2A1005;--dark2:#1A0800;
+  --brown:#3D1C00;
+  --ok:#3FB950;--warn:#FFAA00;--bad:#F85149;--info:#58A6FF;--faint:rgba(239,231,218,.4);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--dark2);color:var(--peach);font-family:"Libre Caslon Text",Georgia,serif;min-height:100vh;}
+.wrap{max-width:560px;margin:0 auto;padding:50px 20px 80px;}
+.logo-row{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:34px;}
+.logo-row img{width:42px;height:42px;border-radius:9px;}
+.logo-row span{font-weight:700;font-size:15px;letter-spacing:1.5px;}
+h1{text-align:center;font-size:24px;margin-bottom:8px;}
+.sub{text-align:center;color:rgba(239,231,218,.5);font-size:13px;margin-bottom:30px;}
+.search-box{display:flex;gap:10px;margin-bottom:30px;}
+.search-box input{
+  flex:1;background:#221007;border:1.5px solid rgba(255,170,0,.16);color:var(--peach);
+  padding:13px 16px;border-radius:8px;font-size:14px;font-family:"Space Mono",monospace;outline:none;
+}
+.search-box input:focus{border-color:var(--flame);}
+.search-box button{
+  background:var(--red);color:#fff;border:none;padding:13px 22px;border-radius:8px;
+  font-weight:700;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;
+}
+.search-box button:hover{background:var(--flame);}
+.search-box button:disabled{opacity:.5;cursor:not-allowed;}
+
+#result{display:none;}
+#result.show{display:block;}
+.card{background:#221007;border:1px solid rgba(255,170,0,.14);border-radius:14px;padding:26px;}
+.ref{font-family:"Space Mono",monospace;font-weight:700;font-size:20px;color:var(--gold);text-align:center;margin-bottom:18px;letter-spacing:1px;}
+
+.status-track{display:flex;justify-content:space-between;margin:24px 0 30px;position:relative;}
+.status-track::before{content:"";position:absolute;top:13px;left:5%;right:5%;height:2px;background:rgba(255,170,0,.14);}
+.s-step{flex:1;text-align:center;position:relative;z-index:1;}
+.s-dot{width:26px;height:26px;border-radius:50%;background:#150600;border:2px solid rgba(255,170,0,.25);margin:0 auto 8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--faint);}
+.s-step.done .s-dot{background:var(--flame);border-color:var(--flame);color:#fff;}
+.s-step.current .s-dot{background:var(--gold);border-color:var(--gold);color:#221007;box-shadow:0 0 0 4px rgba(255,170,0,.18);}
+.s-label{font-size:9.5px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;}
+.s-step.done .s-label,.s-step.current .s-label{color:var(--peach);}
+.s-step.cancelled .s-dot{background:var(--bad);border-color:var(--bad);color:#fff;}
+
+.detail-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;}
+.detail-row:last-child{border-bottom:none;}
+.detail-row span:first-child{color:var(--faint);}
+.detail-row span:last-child{font-weight:700;text-align:right;}
+
+.err-box{
+  background:rgba(248,81,73,.08);border:1px solid rgba(248,81,73,.25);color:#ff8983;
+  padding:16px;border-radius:10px;font-size:13px;text-align:center;display:none;
+}
+.err-box.show{display:block;}
+.loading{text-align:center;color:var(--faint);font-size:13px;padding:20px;display:none;}
+.loading.show{display:block;}
+.foot-note{text-align:center;margin-top:30px;font-size:12px;color:rgba(239,231,218,.35);}
+.foot-note a{color:var(--gold);text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-row"><img id="logoImg" alt="Burger King Ghana"/><span>BURGER KING GHANA</span></div>
+  <h1>Track Your Order</h1>
+  <p class="sub">Enter your order reference number to see its current status.</p>
+
+  <div class="search-box">
+    <input type="text" id="refInput" placeholder="FM-20260628-000001" autocomplete="off" onkeydown="if(event.key==='Enter')trackOrder()"/>
+    <button id="trackBtn" onclick="trackOrder()">Track</button>
+  </div>
+
+  <div class="loading" id="loadingMsg">Looking up your order…</div>
+  <div class="err-box" id="errBox"></div>
+
+  <div id="result">
+    <div class="card">
+      <div class="ref" id="resultRef"></div>
+      <div class="status-track" id="statusTrack"></div>
+      <div id="resultDetails"></div>
+    </div>
+  </div>
+
+  <p class="foot-note">Need help? Call or WhatsApp <a href="tel:+233244704066">0244 704 066</a></p>
+</div>
+
+<script>
+// Fill these in with your Supabase project values — same as dashboard/config.js.
+const TRACK_SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";
+const TRACK_SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const LOGO_DATA_URI = "data:image/jpeg;base64,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";
+
+document.getElementById("logoImg").src = LOGO_DATA_URI;
+
+const STEPS = [
+  { key: "pending", label: "Order Placed" },
+  { key: "confirmed", label: "Confirmed" },
+  { key: "preparing", label: "Preparing" },
+  { key: "final", label: "Ready" }, // ready_for_pickup OR out_for_delivery
+  { key: "completed", label: "Completed" },
+];
+
+function fmtMoney(n) { return "GH₵" + (Number(n) || 0).toFixed(2); }
+function fmtDateTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) + " · " +
+         d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Africa/Accra" });
+}
+function escapeHtml(str) {
+  if (str == null) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function stepIndexForStatus(status) {
+  if (status === "ready_for_pickup" || status === "out_for_delivery") return 3;
+  if (status === "completed") return 4;
+  const idx = STEPS.findIndex((s) => s.key === status);
+  return idx === -1 ? 0 : idx;
+}
+
+function renderStatusTrack(status) {
+  const track = document.getElementById("statusTrack");
+  if (status === "cancelled") {
+    track.innerHTML = `<div class="s-step cancelled" style="flex:1;"><div class="s-dot">&times;</div><div class="s-label">Order Cancelled</div></div>`;
+    return;
+  }
+  const currentIdx = stepIndexForStatus(status);
+  track.innerHTML = STEPS.map((s, i) => {
+    const cls = i < currentIdx ? "done" : i === currentIdx ? "current" : "";
+    const dotContent = i < currentIdx ? "&check;" : i + 1;
+    return `<div class="s-step ${cls}"><div class="s-dot">${dotContent}</div><div class="s-label">${s.label}</div></div>`;
+  }).join("");
+}
+
+async function trackOrder() {
+  const ref = document.getElementById("refInput").value.trim();
+  const errBox = document.getElementById("errBox");
+  const resultEl = document.getElementById("result");
+  const loadingEl = document.getElementById("loadingMsg");
+  const btn = document.getElementById("trackBtn");
+
+  errBox.classList.remove("show");
+  resultEl.classList.remove("show");
+
+  if (!ref) {
+    errBox.textContent = "Please enter your order reference number.";
+    errBox.classList.add("show");
+    return;
+  }
+
+  if (TRACK_SUPABASE_URL === "YOUR_SUPABASE_PROJECT_URL") {
+    errBox.textContent = "Order tracking is not yet configured. Please contact us directly to check your order status.";
+    errBox.classList.add("show");
+    return;
+  }
+
+  btn.disabled = true;
+  loadingEl.classList.add("show");
+
+  try {
+    const supabase = window.supabase.createClient(TRACK_SUPABASE_URL, TRACK_SUPABASE_ANON_KEY);
+    // Orders are not publicly readable via RLS (see schema.sql) — tracking
+    // goes through a dedicated lookup that only returns the limited fields
+    // a customer should see. If you haven't deployed a track-order Edge
+    // Function, this calls the same public endpoint pattern as other
+    // functions; see docs/SETUP.md for the one-line deploy command.
+    const res = await fetch(`${TRACK_SUPABASE_URL.replace(/\/$/, "")}/functions/v1/track-order`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: TRACK_SUPABASE_ANON_KEY, Authorization: `Bearer ${TRACK_SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ orderReference: ref }),
+    });
+    const json = await res.json();
+
+    if (!json.success) {
+      errBox.textContent = json.error || "We couldn't find an order with that reference number.";
+      errBox.classList.add("show");
+      return;
+    }
+
+    const order = json.order;
+    document.getElementById("resultRef").textContent = order.order_reference;
+    renderStatusTrack(order.order_status);
+
+    const etaLine = order.delivery_method === "delivery"
+      ? `<div class="detail-row"><span>Estimated Delivery</span><span>${fmtDateTime(order.delivery_time) !== "—" ? fmtDateTime(order.delivery_time) : "25–35 minutes from confirmation"}</span></div>`
+      : `<div class="detail-row"><span>Estimated Pickup</span><span>${fmtDateTime(order.pickup_time) !== "—" ? fmtDateTime(order.pickup_time) : "25–35 minutes from confirmation"}</span></div>`;
+
+    document.getElementById("resultDetails").innerHTML = `
+      <div class="detail-row"><span>Status</span><span>${escapeHtml((order.order_status || "").replace(/_/g, " "))}</span></div>
+      <div class="detail-row"><span>Method</span><span>${order.delivery_method === "delivery" ? "Delivery" : "Pickup"}</span></div>
+      ${etaLine}
+      <div class="detail-row"><span>Payment Status</span><span>${escapeHtml(order.payment_status)}</span></div>
+      <div class="detail-row"><span>Grand Total</span><span>${fmtMoney(order.grand_total)}</span></div>
+      <div class="detail-row"><span>Placed</span><span>${fmtDateTime(order.created_at)}</span></div>
+    `;
+
+    resultEl.classList.add("show");
+  } catch (e) {
+    errBox.textContent = "Something went wrong looking up your order. Please try again.";
+    errBox.classList.add("show");
+  } finally {
+    btn.disabled = false;
+    loadingEl.classList.remove("show");
+  }
+}
+
+// Auto-fill and search if the page was opened with ?ref=FM-... in the URL
+// (this is how the confirmation page's "Track Order" button links here).
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref");
+  if (ref) {
+    document.getElementById("refInput").value = ref;
+    trackOrder();
+  }
+})();
+</script>
+</body>
+</html>
